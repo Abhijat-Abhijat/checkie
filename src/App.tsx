@@ -6,7 +6,6 @@ import {
   Circle, 
   Flame, 
   Star,
-  Settings,
   Zap,
   History,
   X,
@@ -14,7 +13,7 @@ import {
   RefreshCcw
 } from "lucide-react";
 
-// 1. Define the Task interface to resolve 'never' and 'any' errors
+// 1. Define the Task interface
 interface Task {
   id: string;
   name: string;
@@ -25,7 +24,7 @@ interface Task {
   createdAt: number;
 }
 
-// Extend Window interface for global libraries
+// 2. Fixed CustomWindow interface
 interface CustomWindow extends Window {
   confetti?: any;
   webkitAudioContext?: typeof AudioContext;
@@ -34,8 +33,6 @@ interface CustomWindow extends Window {
 declare const window: CustomWindow;
 
 const CATEGORIES = ["Personal", "Work", "Health", "Focus"];
-
-// Daily prompts for empty states
 const INTENTIONS = [
   "What is your main objective today?",
   "Focus on one small win.",
@@ -45,7 +42,6 @@ const INTENTIONS = [
 ];
 
 export default function App() {
-  // 2. Initialize state with Task[] type
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTask, setNewTask] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Personal");
@@ -91,7 +87,8 @@ export default function App() {
 
   const playPop = (freq = 400) => {
     try {
-      const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+      // Use standard AudioContext from global scope or webkit version from window
+      const AudioCtxClass = (window.AudioContext || window.webkitAudioContext);
       if (!AudioCtxClass) return;
       const audioCtx = new AudioCtxClass();
       const osc = audioCtx.createOscillator();
@@ -224,7 +221,6 @@ export default function App() {
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col overflow-y-auto no-scrollbar relative">
         <div className="max-w-xl w-full mx-auto p-6 sm:p-12 pb-32">
           
