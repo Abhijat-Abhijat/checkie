@@ -24,9 +24,10 @@ interface Task {
   createdAt: number;
 }
 
-// 2. Fixed CustomWindow interface
+// 2. Fixed CustomWindow interface to include standard AudioContext
 interface CustomWindow extends Window {
   confetti?: any;
+  AudioContext: typeof AudioContext;
   webkitAudioContext?: typeof AudioContext;
 }
 
@@ -37,7 +38,6 @@ const INTENTIONS = [
   "What is your main objective today?",
   "Focus on one small win.",
   "Clear space, clear mind.",
-  "Ready to start fresh?",
   "What would make today a success?"
 ];
 
@@ -87,8 +87,8 @@ export default function App() {
 
   const playPop = (freq = 400) => {
     try {
-      // Use standard AudioContext from global scope or webkit version from window
-      const AudioCtxClass = (window.AudioContext || window.webkitAudioContext);
+      // Access AudioContext safely using the defined CustomWindow interface
+      const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtxClass) return;
       const audioCtx = new AudioCtxClass();
       const osc = audioCtx.createOscillator();
