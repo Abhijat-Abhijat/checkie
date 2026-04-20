@@ -7,6 +7,9 @@ import {
   Flame, 
   Star,
   Settings,
+  History,
+  X,
+  GripVertical,
   RefreshCcw,
   Zap
 } from "lucide-react";
@@ -23,104 +26,91 @@ const INTENTIONS = [
   "What would make today a success?"
 ];
 
-interface Task {
-  id: string;
-  name: string;
-  completed: boolean;
-  priority: boolean;
-  isHabit: boolean;
-  category: string;
-  createdAt: number;
-}
-
 export default function App() {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Personal");
   const [streak, setStreak] = useState(0);
-  const [lastCheckIn, setLastCheckIn] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editText, setEditText] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState(null);
   const [greeting, setGreeting] = useState("");
+  const [lastCheckIn, setLastCheckIn] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState("");
 
-  // Setup: Confetti Script & Greeting
   useEffect(() => {
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js';
     script.async = true;
     document.body.appendChild(script);
-    
+
     const hour = new Date().getHours();
     if (hour < 12) setGreeting("Good morning");
     else if (hour < 18) setGreeting("Good afternoon");
     else setGreeting("Good evening");
 
-    return () => { document.body.removeChild(script); };
-  }, []);
-
-  // Initialization: Load from Local Storage
-  useEffect(() => {
-    const savedTasks = localStorage.getItem("minimal-tasks");
-    const savedStreak = localStorage.getItem("minimal-streak");
-    const savedLastDate = localStorage.getItem("minimal-last-date");
+    const savedTasks = localStorage.getItem("essentialist-tasks");
+    const savedStreak = localStorage.getItem("essentialist-streak");
+    const savedDate = localStorage.getItem("essentialist-last-date");
 
     if (savedTasks) setTasks(JSON.parse(savedTasks));
     if (savedStreak) setStreak(parseInt(savedStreak, 10) || 0);
-    if (savedLastDate) setLastCheckIn(savedLastDate);
+    if (savedDate) setLastCheckIn(savedDate);
+
+    return () => { document.body.removeChild(script); };
   }, []);
 
-  // Daily Reset Logic
   useEffect(() => {
     const today = new Date().toDateString();
     if (lastCheckIn && lastCheckIn !== today) {
-      // Uncheck all tasks for the new day
       setTasks(prev => prev.map(t => ({ ...t, completed: false })));
       setLastCheckIn(today);
-      localStorage.setItem("minimal-last-date", today);
+      localStorage.setItem("essentialist-last-date", today);
     } else if (!lastCheckIn) {
       setLastCheckIn(today);
-      localStorage.setItem("minimal-last-date", today);
+      localStorage.setItem("essentialist-last-date", today);
     }
   }, [lastCheckIn]);
 
-  // Sync tasks to Local Storage
   useEffect(() => {
-    localStorage.setItem("minimal-tasks", JSON.stringify(tasks));
-  }, [tasks]);
+    localStorage.setItem("essentialist-tasks", JSON.stringify(tasks));
+    localStorage.setItem("essentialist-streak", streak.toString());
+  }, [tasks, streak]);
 
-  // UI Sounds (Web Audio API)
   const playPop = (freq = 400) => {
     try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
-      oscillator.frequency.exponentialRampToValueAtTime(freq * 2, audioCtx.currentTime + 0.1);
-      gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      oscillator.start();
-      oscillator.stop(audioCtx.currentTime + 0.1);
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(freq * 2, audioCtx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.1);
     } catch (e) {}
   };
 
   const triggerConfetti = () => {
-    if ((window as any).confetti) {
-      (window as any).confetti({
-        particleCount: 80,
-        spread: 60,
-        origin: { y: 0.7 },
-        colors: ['#000000', '#ffffff', '#a3a3a3']
+    if (window.confetti) {
+      window.confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#000000', '#ffffff', '#737373']
       });
     }
   };
 
-  const addTask = (e: React.FormEvent) => {
+  const activeTasks = useMemo(() => tasks.filter(t => !t.completed), [tasks]);
+  const completedTasks = useMemo(() => tasks.filter(t => t.completed), [tasks]);
+  const progress = tasks.length === 0 ? 0 : Math.round((completedTasks.length / tasks.length) * 100);
+
+  const addTask = (e) => {
     e.preventDefault();
     if (!newTask.trim()) return;
-    const task: Task = {
+    const task = {
       id: crypto.randomUUID(),
       name: newTask.trim(),
       completed: false,
@@ -134,143 +124,260 @@ export default function App() {
     playPop(300);
   };
 
-  const toggleTask = (id: string) => {
+  const toggleTask = (id) => {
     const wasEveryTaskDone = tasks.length > 0 && tasks.every(t => t.completed);
-    const updatedTasks = tasks.map(t => {
+    const newTasks = tasks.map(t => {
       if (t.id === id) {
         if (!t.completed) playPop(500);
         return { ...t, completed: !t.completed };
       }
       return t;
     });
-
-    const isEveryTaskDoneNow = updatedTasks.length > 0 && updatedTasks.every(t => t.completed);
+    setTasks(newTasks);
+    const isEveryTaskDoneNow = newTasks.length > 0 && newTasks.every(t => t.completed);
     if (isEveryTaskDoneNow && !wasEveryTaskDone) {
       triggerConfetti();
-      const newStreak = streak + 1;
-      setStreak(newStreak);
-      localStorage.setItem("minimal-streak", newStreak.toString());
+      setStreak(s => s + 1);
     }
-    setTasks(updatedTasks);
   };
 
-  const saveEdit = (id: string) => {
+  const deleteTask = (id) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
+    playPop(200);
+  };
+
+  const saveEdit = (id) => {
     setTasks(tasks.map(t => t.id === id ? { ...t, name: editText } : t));
     setEditingId(null);
   };
 
-  // Sorting: Active Priority > Active > Completed
-  const sortedTasks = useMemo(() => {
-    return [...tasks].sort((a, b) => {
-      if (a.completed !== b.completed) return a.completed ? 1 : -1;
-      if (a.priority !== b.priority) return a.priority ? -1 : 1;
-      return b.createdAt - a.createdAt;
-    });
-  }, [tasks]);
-
-  const progress = tasks.length === 0 ? 0 : Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100);
+  const handleDragStart = (index) => setDraggedIndex(index);
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+    const newActiveTasks = [...activeTasks];
+    const draggedItem = newActiveTasks[draggedIndex];
+    newActiveTasks.splice(draggedIndex, 1);
+    newActiveTasks.splice(index, 0, draggedItem);
+    setDraggedIndex(index);
+    setTasks([...newActiveTasks, ...completedTasks]);
+  };
 
   return (
-    <div className="min-h-screen bg-[#fafafa] dark:bg-black text-neutral-900 dark:text-neutral-100 p-6 sm:p-12 transition-colors duration-500 font-sans">
-      <div className="max-w-md mx-auto">
-        
-        <header className="mb-12">
-          <div className="flex justify-between items-start mb-8">
-            <div className="space-y-1">
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-400">
-                {greeting} — {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </p>
-              <h1 className="text-4xl font-black tracking-tight flex items-center gap-3">
-                Focus
-                {tasks.filter(t => !t.completed).length > 0 && (
-                  <span className="text-xs bg-neutral-100 dark:bg-neutral-900 px-2 py-1 rounded-md text-neutral-400 font-bold">
-                    {tasks.filter(t => !t.completed).length}
-                  </span>
-                )}
-              </h1>
-            </div>
-            <div className="flex items-center gap-1.5 bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-2xl text-sm font-black shadow-xl">
-              <Flame size={16} fill="currentColor" />
-              <span>{streak}</span>
-            </div>
+    <div className="flex h-screen bg-[#fafafa] dark:bg-black text-neutral-900 dark:text-neutral-100 overflow-hidden transition-colors duration-500 font-sans">
+      
+      {/* SIDEBAR ARCHIVE (Only place to see Done tasks) */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-80 bg-white dark:bg-neutral-900 shadow-2xl transform transition-transform duration-500 ease-in-out ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} border-r border-neutral-100 dark:border-neutral-800`}>
+        <div className="h-full flex flex-col p-8">
+          <div className="flex justify-between items-center mb-10">
+            <h2 className="text-xl font-black tracking-tight">Archive</h2>
+            <button onClick={() => setSidebarOpen(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors">
+              <X size={20} />
+            </button>
           </div>
-          <div className="relative h-1 w-full bg-neutral-100 dark:bg-neutral-900 rounded-full overflow-hidden">
-            <div className="h-full bg-black dark:bg-white transition-all duration-1000 ease-out" style={{ width: `${progress}%` }} />
-          </div>
-        </header>
 
-        <form onSubmit={addTask} className="mb-12">
-          <div className="relative mb-6">
-            <input
-              type="text"
-              placeholder="What is your focus today?"
-              value={newTask}
-              onChange={(e) => setNewTask(e.target.value)}
-              className="w-full bg-white dark:bg-[#0a0a0a] border-none rounded-[1.5rem] py-5 pl-14 pr-6 outline-none focus:ring-1 ring-neutral-200 dark:ring-neutral-800 transition-all text-lg shadow-sm"
-            />
-            <Plus className="absolute left-5 top-1/2 -translate-y-1/2 text-neutral-300" size={24} />
+          <div className="flex-1 overflow-y-auto no-scrollbar space-y-4">
+            {completedTasks.length === 0 ? (
+              <p className="text-neutral-400 text-sm italic">Nothing archived yet.</p>
+            ) : (
+              completedTasks.map(task => (
+                <div key={task.id} className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-black/40 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                  <div className="flex items-center gap-3 min-w-0 opacity-60">
+                    <button onClick={() => toggleTask(task.id)} className="text-black dark:text-white shrink-0">
+                      <CheckCircle2 size={18} />
+                    </button>
+                    <span className="text-sm font-medium truncate line-through">{task.name}</span>
+                  </div>
+                  <button onClick={() => deleteTask(task.id)} className="text-neutral-300 hover:text-red-500 p-1 transition-colors">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))
+            )}
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategory === cat ? "bg-black dark:bg-white text-white dark:text-black" : "bg-neutral-100 dark:bg-[#0a0a0a] text-neutral-400"}`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        </form>
 
-        <div className="space-y-3">
-          {sortedTasks.length === 0 ? (
-            <div className="text-center py-20 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-[2.5rem]">
-              <p className="text-neutral-400 text-sm font-medium">{INTENTIONS[0]}</p>
-            </div>
-          ) : (
-            sortedTasks.map((task) => (
-              <div key={task.id} className={`group flex items-center gap-4 p-5 rounded-[2rem] transition-all border ${task.completed ? "bg-transparent border-transparent opacity-40 scale-[0.97]" : "bg-white dark:bg-[#0a0a0a] border-neutral-100 dark:border-neutral-900 shadow-sm"}`}>
-                <button onClick={() => toggleTask(task.id)} className="shrink-0 active:scale-50 transition-transform">
-                  {task.completed ? <CheckCircle2 className="text-black dark:text-white" size={26} /> : <Circle className="text-neutral-200 dark:text-neutral-800" size={26} />}
-                </button>
-                <div className="flex-1 min-w-0">
-                  {editingId === task.id ? (
-                    <input 
-                      autoFocus 
-                      value={editText} 
-                      onChange={(e) => setEditText(e.target.value)} 
-                      onBlur={() => saveEdit(task.id)} 
-                      onKeyDown={(e) => e.key === 'Enter' && saveEdit(task.id)}
-                      className="w-full bg-transparent border-none outline-none font-bold" 
-                    />
-                  ) : (
-                    <div onClick={() => { setEditingId(task.id); setEditText(task.name); }}>
-                      <p className={`font-bold truncate ${task.completed ? "line-through text-neutral-400" : ""}`}>{task.name}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[8px] font-black uppercase tracking-[0.2em] text-neutral-400">{task.category}</span>
-                        {task.isHabit && <RefreshCcw size={10} className="text-neutral-400" />}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={(e) => { e.stopPropagation(); setTasks(tasks.map(t => t.id === task.id ? { ...t, isHabit: !t.isHabit } : t)); playPop(600); }} className={`p-2 rounded-full ${task.isHabit ? "text-blue-500" : "text-neutral-200"}`}><Zap size={16} fill={task.isHabit ? "currentColor" : "none"} /></button>
-                  <button onClick={(e) => { e.stopPropagation(); setTasks(tasks.map(t => t.id === task.id ? { ...t, priority: !t.priority } : t)); }} className={`p-2 ${task.priority ? "text-black dark:text-white" : "text-neutral-200"}`}><Star size={16} fill={task.priority ? "currentColor" : "none"} /></button>
-                  <button onClick={(e) => { e.stopPropagation(); setTasks(tasks.filter(t => t.id !== task.id)); playPop(200); }} className="p-2 text-neutral-200 hover:text-red-500"><Trash2 size={16} /></button>
-                </div>
-              </div>
-            ))
+          {completedTasks.length > 0 && (
+            <button 
+              onClick={() => setTasks(tasks.filter(t => !t.completed))}
+              className="mt-6 w-full py-4 text-[10px] font-black uppercase tracking-[0.2em] text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-2xl transition-all"
+            >
+              Clear Archive
+            </button>
           )}
         </div>
-        <footer className="mt-20 mb-10 text-center opacity-40">
-            <div className="inline-flex items-center gap-2">
-                <Settings size={12} />
-                <span className="text-[9px] font-black uppercase tracking-[0.4em]">Essentialist Mode</span>
+      </aside>
+
+      {sidebarOpen && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      {/* MAIN CONTENT (Active Tasks Only) */}
+      <main className="flex-1 flex flex-col overflow-y-auto no-scrollbar relative">
+        <div className="max-w-xl w-full mx-auto p-6 sm:p-12 pb-32">
+          
+          <header className="mb-12">
+            <div className="flex justify-between items-start mb-8">
+              <div className="space-y-1">
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => setSidebarOpen(true)}
+                    className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors group"
+                  >
+                    <History size={12} className="group-hover:rotate-[-10deg] transition-transform" />
+                    Archive
+                  </button>
+                  <span className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-300">
+                    {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
+                <h1 className="text-5xl font-black tracking-tighter mt-2">{greeting}</h1>
+              </div>
+              <div className="flex items-center gap-2 bg-black dark:bg-white text-white dark:text-black px-5 py-2.5 rounded-full text-sm font-black shadow-xl shrink-0 transition-transform hover:scale-105">
+                <Flame size={18} fill="currentColor" />
+                <span>{streak}</span>
+              </div>
             </div>
+
+            <div className="relative h-1.5 w-full bg-neutral-100 dark:bg-neutral-900 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-black dark:bg-white transition-all duration-1000 ease-out" 
+                style={{ width: `${progress}%` }} 
+              />
+            </div>
+          </header>
+
+          <form onSubmit={addTask} className="mb-12 relative group">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="What is your focus?"
+                value={newTask}
+                onChange={(e) => setNewTask(e.target.value)}
+                className="w-full bg-white dark:bg-neutral-900 border-none rounded-[2rem] py-6 pl-14 pr-6 outline-none focus:ring-4 ring-black/5 dark:ring-white/5 transition-all text-xl shadow-sm placeholder:text-neutral-200 dark:placeholder:text-neutral-800"
+              />
+              <Plus className="absolute left-5 top-1/2 -translate-y-1/2 text-neutral-300 dark:text-neutral-700" size={24} />
+            </div>
+            
+            <div className="flex gap-2 mt-4 overflow-x-auto no-scrollbar pb-2">
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+                    selectedCategory === cat 
+                    ? "bg-black dark:bg-white text-white dark:text-black scale-105 shadow-md" 
+                    : "bg-neutral-200/50 dark:bg-neutral-900 text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-800"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </form>
+
+          <div className="space-y-4">
+            <div className="flex justify-between items-center px-4">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-neutral-300">Objectives</h3>
+              <span className="text-[10px] font-black text-neutral-400">{activeTasks.length} Pending</span>
+            </div>
+
+            {activeTasks.length === 0 ? (
+              <div className="py-20 text-center border-2 border-dashed border-neutral-100 dark:border-neutral-900 rounded-[3rem]">
+                <p className="text-neutral-300 font-medium px-8">{INTENTIONS[Math.floor(Math.random() * INTENTIONS.length)]}</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-200 mt-2">All tasks completed or archived</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activeTasks.map((task, index) => (
+                  <div 
+                    key={task.id}
+                    draggable
+                    onDragStart={() => handleDragStart(index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragEnd={() => setDraggedIndex(null)}
+                    className={`group flex items-center gap-4 p-6 rounded-[2.5rem] bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 shadow-sm transition-all active:scale-[0.98] cursor-default ${draggedIndex === index ? "opacity-30 scale-90" : ""}`}
+                  >
+                    <button onClick={() => toggleTask(task.id)} className="shrink-0 text-neutral-200 dark:text-neutral-800 hover:text-black dark:hover:text-white transition-colors active:scale-75">
+                      <Circle size={28} />
+                    </button>
+
+                    <div className="flex-1 min-w-0">
+                      {editingId === task.id ? (
+                        <input 
+                          autoFocus 
+                          value={editText} 
+                          onChange={(e) => setEditText(e.target.value)} 
+                          onBlur={() => saveEdit(task.id)} 
+                          onKeyDown={(e) => e.key === 'Enter' && saveEdit(task.id)}
+                          className="w-full bg-transparent border-none outline-none font-bold text-lg" 
+                        />
+                      ) : (
+                        <div onClick={() => { setEditingId(task.id); setEditText(task.name); }}>
+                          <p className="font-bold text-lg leading-tight truncate">{task.name}</p>
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-400">{task.category}</span>
+                            {task.isHabit && <RefreshCcw size={10} className="text-blue-400" />}
+                            {task.priority && <Star size={10} fill="currentColor" className="text-orange-400" />}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+                      <button 
+                        onClick={() => { setTasks(tasks.map(t => t.id === task.id ? { ...t, isHabit: !t.isHabit } : t)); playPop(600); }} 
+                        className={`p-2 rounded-full transition-colors ${task.isHabit ? "text-blue-500" : "text-neutral-200"}`}
+                        title="Toggle Habit"
+                      >
+                        <Zap size={18} fill={task.isHabit ? "currentColor" : "none"} />
+                      </button>
+                      <button 
+                        onClick={() => setTasks(tasks.map(t => t.id === task.id ? { ...t, priority: !t.priority } : t))}
+                        className={`p-2 rounded-full transition-colors ${task.priority ? "text-orange-400" : "text-neutral-200"}`}
+                        title="Toggle Priority"
+                      >
+                        <Star size={18} fill={task.priority ? "currentColor" : "none"} />
+                      </button>
+                      <button 
+                        onClick={() => deleteTask(task.id)}
+                        className="p-2 text-neutral-200 hover:text-red-500 transition-colors"
+                        title="Delete Task"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                      <div className="cursor-grab active:cursor-grabbing p-2 text-neutral-200 hover:text-neutral-400">
+                        <GripVertical size={18} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-16 flex justify-center">
+            <div className="bg-neutral-100/50 dark:bg-neutral-900/50 backdrop-blur-md px-6 py-3 rounded-full flex gap-8 border border-neutral-200 dark:border-neutral-800">
+              <div className="text-center">
+                <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Progress</p>
+                <p className="text-sm font-bold">{progress}%</p>
+              </div>
+              <div className="w-px bg-neutral-200 dark:bg-neutral-800" />
+              <div className="text-center">
+                <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Active</p>
+                <p className="text-sm font-bold">{activeTasks.length}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <footer className="p-8 mt-auto flex justify-center">
+          <div className="inline-flex items-center gap-3 px-6 py-2 bg-neutral-100/30 dark:bg-neutral-900/30 rounded-full opacity-20 hover:opacity-100 transition-opacity">
+            <Settings size={12} />
+            <span className="text-[8px] font-black tracking-[0.5em] uppercase">Persistent Storage Active</span>
+          </div>
         </footer>
-      </div>
+      </main>
     </div>
   );
 }
