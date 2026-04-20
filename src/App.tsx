@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, ChangeEvent, FormEvent } from "react";
 import { 
   Plus, 
   Trash2, 
@@ -7,14 +7,32 @@ import {
   Flame, 
   Star,
   Settings,
+  Zap,
   History,
   X,
   GripVertical,
-  RefreshCcw,
-  Zap
+  RefreshCcw
 } from "lucide-react";
 
-// Minimalist category list
+// 1. Define the Task interface to resolve 'never' and 'any' errors
+interface Task {
+  id: string;
+  name: string;
+  completed: boolean;
+  priority: boolean;
+  isHabit: boolean;
+  category: string;
+  createdAt: number;
+}
+
+// Extend Window interface for global libraries
+interface CustomWindow extends Window {
+  confetti?: any;
+  webkitAudioContext?: typeof AudioContext;
+}
+
+declare const window: CustomWindow;
+
 const CATEGORIES = ["Personal", "Work", "Health", "Focus"];
 
 // Daily prompts for empty states
@@ -27,23 +45,19 @@ const INTENTIONS = [
 ];
 
 export default function App() {
-  const [tasks, setTasks] = useState([]);
+  // 2. Initialize state with Task[] type
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [newTask, setNewTask] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Personal");
   const [streak, setStreak] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [draggedIndex, setDraggedIndex] = useState(null);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [greeting, setGreeting] = useState("");
   const [lastCheckIn, setLastCheckIn] = useState("");
-  const [editingId, setEditingId] = useState(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
 
   useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js';
-    script.async = true;
-    document.body.appendChild(script);
-
     const hour = new Date().getHours();
     if (hour < 12) setGreeting("Good morning");
     else if (hour < 18) setGreeting("Good afternoon");
@@ -56,8 +70,6 @@ export default function App() {
     if (savedTasks) setTasks(JSON.parse(savedTasks));
     if (savedStreak) setStreak(parseInt(savedStreak, 10) || 0);
     if (savedDate) setLastCheckIn(savedDate);
-
-    return () => { document.body.removeChild(script); };
   }, []);
 
   useEffect(() => {
@@ -79,7 +91,9 @@ export default function App() {
 
   const playPop = (freq = 400) => {
     try {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtxClass) return;
+      const audioCtx = new AudioCtxClass();
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = 'sine';
@@ -107,10 +121,10 @@ export default function App() {
   const completedTasks = useMemo(() => tasks.filter(t => t.completed), [tasks]);
   const progress = tasks.length === 0 ? 0 : Math.round((completedTasks.length / tasks.length) * 100);
 
-  const addTask = (e) => {
+  const addTask = (e: FormEvent) => {
     e.preventDefault();
     if (!newTask.trim()) return;
-    const task = {
+    const task: Task = {
       id: crypto.randomUUID(),
       name: newTask.trim(),
       completed: false,
@@ -124,7 +138,7 @@ export default function App() {
     playPop(300);
   };
 
-  const toggleTask = (id) => {
+  const toggleTask = (id: string) => {
     const wasEveryTaskDone = tasks.length > 0 && tasks.every(t => t.completed);
     const newTasks = tasks.map(t => {
       if (t.id === id) {
@@ -141,18 +155,17 @@ export default function App() {
     }
   };
 
-  const deleteTask = (id) => {
+  const deleteTask = (id: string) => {
     setTasks(prev => prev.filter(t => t.id !== id));
     playPop(200);
   };
 
-  const saveEdit = (id) => {
+  const saveEdit = (id: string) => {
     setTasks(tasks.map(t => t.id === id ? { ...t, name: editText } : t));
     setEditingId(null);
   };
 
-  const handleDragStart = (index) => setDraggedIndex(index);
-  const handleDragOver = (e, index) => {
+  const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
     if (draggedIndex === null || draggedIndex === index) return;
     const newActiveTasks = [...activeTasks];
@@ -166,7 +179,7 @@ export default function App() {
   return (
     <div className="flex h-screen bg-[#fafafa] dark:bg-black text-neutral-900 dark:text-neutral-100 overflow-hidden transition-colors duration-500 font-sans">
       
-      {/* SIDEBAR ARCHIVE (Only place to see Done tasks) */}
+      {/* SIDEBAR ARCHIVE */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-80 bg-white dark:bg-neutral-900 shadow-2xl transform transition-transform duration-500 ease-in-out ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} border-r border-neutral-100 dark:border-neutral-800`}>
         <div className="h-full flex flex-col p-8">
           <div className="flex justify-between items-center mb-10">
@@ -211,7 +224,7 @@ export default function App() {
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* MAIN CONTENT (Active Tasks Only) */}
+      {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col overflow-y-auto no-scrollbar relative">
         <div className="max-w-xl w-full mx-auto p-6 sm:p-12 pb-32">
           
@@ -252,7 +265,7 @@ export default function App() {
                 type="text"
                 placeholder="What is your focus?"
                 value={newTask}
-                onChange={(e) => setNewTask(e.target.value)}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewTask(e.target.value)}
                 className="w-full bg-white dark:bg-neutral-900 border-none rounded-[2rem] py-6 pl-14 pr-6 outline-none focus:ring-4 ring-black/5 dark:ring-white/5 transition-all text-xl shadow-sm placeholder:text-neutral-200 dark:placeholder:text-neutral-800"
               />
               <Plus className="absolute left-5 top-1/2 -translate-y-1/2 text-neutral-300 dark:text-neutral-700" size={24} />
@@ -293,7 +306,7 @@ export default function App() {
                   <div 
                     key={task.id}
                     draggable
-                    onDragStart={() => handleDragStart(index)}
+                    onDragStart={() => setDraggedIndex(index)}
                     onDragOver={(e) => handleDragOver(e, index)}
                     onDragEnd={() => setDraggedIndex(null)}
                     className={`group flex items-center gap-4 p-6 rounded-[2.5rem] bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 shadow-sm transition-all active:scale-[0.98] cursor-default ${draggedIndex === index ? "opacity-30 scale-90" : ""}`}
@@ -307,7 +320,7 @@ export default function App() {
                         <input 
                           autoFocus 
                           value={editText} 
-                          onChange={(e) => setEditText(e.target.value)} 
+                          onChange={(e: ChangeEvent<HTMLInputElement>) => setEditText(e.target.value)} 
                           onBlur={() => saveEdit(task.id)} 
                           onKeyDown={(e) => e.key === 'Enter' && saveEdit(task.id)}
                           className="w-full bg-transparent border-none outline-none font-bold text-lg" 
@@ -326,23 +339,20 @@ export default function App() {
 
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
                       <button 
-                        onClick={() => { setTasks(tasks.map(t => t.id === task.id ? { ...t, isHabit: !t.isHabit } : t)); playPop(600); }} 
+                        onClick={() => setTasks(tasks.map(t => t.id === task.id ? { ...t, isHabit: !t.isHabit } : t))} 
                         className={`p-2 rounded-full transition-colors ${task.isHabit ? "text-blue-500" : "text-neutral-200"}`}
-                        title="Toggle Habit"
                       >
                         <Zap size={18} fill={task.isHabit ? "currentColor" : "none"} />
                       </button>
                       <button 
                         onClick={() => setTasks(tasks.map(t => t.id === task.id ? { ...t, priority: !t.priority } : t))}
                         className={`p-2 rounded-full transition-colors ${task.priority ? "text-orange-400" : "text-neutral-200"}`}
-                        title="Toggle Priority"
                       >
                         <Star size={18} fill={task.priority ? "currentColor" : "none"} />
                       </button>
                       <button 
                         onClick={() => deleteTask(task.id)}
                         className="p-2 text-neutral-200 hover:text-red-500 transition-colors"
-                        title="Delete Task"
                       >
                         <Trash2 size={18} />
                       </button>
@@ -355,28 +365,7 @@ export default function App() {
               </div>
             )}
           </div>
-
-          <div className="mt-16 flex justify-center">
-            <div className="bg-neutral-100/50 dark:bg-neutral-900/50 backdrop-blur-md px-6 py-3 rounded-full flex gap-8 border border-neutral-200 dark:border-neutral-800">
-              <div className="text-center">
-                <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Progress</p>
-                <p className="text-sm font-bold">{progress}%</p>
-              </div>
-              <div className="w-px bg-neutral-200 dark:bg-neutral-800" />
-              <div className="text-center">
-                <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Active</p>
-                <p className="text-sm font-bold">{activeTasks.length}</p>
-              </div>
-            </div>
-          </div>
         </div>
-
-        <footer className="p-8 mt-auto flex justify-center">
-          <div className="inline-flex items-center gap-3 px-6 py-2 bg-neutral-100/30 dark:bg-neutral-900/30 rounded-full opacity-20 hover:opacity-100 transition-opacity">
-            <Settings size={12} />
-            <span className="text-[8px] font-black tracking-[0.5em] uppercase">Persistent Storage Active</span>
-          </div>
-        </footer>
       </main>
     </div>
   );
