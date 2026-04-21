@@ -55,9 +55,12 @@ export default function App() {
 
   useEffect(() => {
     const hour = new Date().getHours();
-    if (hour < 12) setGreeting("Good morning");
-    else if (hour < 18) setGreeting("Good afternoon");
-    else setGreeting("Good evening");
+    const greeting = 
+        hour < 12 ? "Good morning" :
+        hour < 18 ? "Good afternoon" :
+        hour < 22 ? "Good evening" : 
+        "Good night";
+    setGreeting(greeting);
 
     const savedTasks = localStorage.getItem("essentialist-tasks");
     const savedStreak = localStorage.getItem("essentialist-streak");
